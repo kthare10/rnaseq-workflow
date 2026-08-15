@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.DS_Store
+berent/
+output/
+output.tgz
+scratch/
+runs/
+submit/
+workflow.yml
+pegasus.properties
+sites.yml
