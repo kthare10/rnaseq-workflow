@@ -316,9 +316,7 @@ class RnaseqWorkflow:
 
         bwa_index_job = (
             Job("bwa_index", _id="bwa_index", node_label="bwa_index")
-            .add_args(
-                f"--reference {ref_genome_file.lfn}"
-            )
+            .add_args("--reference", ref_genome_file.lfn)
             .add_inputs(ref_genome_file)
             .add_outputs(
                 *bwa_idx_files, stage_out=False, register_replica=False
@@ -351,12 +349,12 @@ class RnaseqWorkflow:
                 trimmed2 = None
             fastp_html = File(f"fastp_qc/{sample_id}_fastp.html")
 
-            fastp_args = (
-                f"--read1 {read1_file.lfn} "
-                f"--out1 {trimmed1.lfn} "
-                f"--html {fastp_html.lfn} "
-                f"--threads {TOOL_CONFIGS['fastp']['cores']}"
-            )
+            fastp_args = [
+                "--read1", read1_file.lfn,
+                "--out1", trimmed1.lfn,
+                "--html", fastp_html.lfn,
+                "--threads", str(TOOL_CONFIGS['fastp']['cores']),
+            ]
             fastp_inputs = [read1_file]
 
             if is_paired:
@@ -372,7 +370,7 @@ class RnaseqWorkflow:
                     _id=f"fastp_{sample_id}",
                     node_label=f"fastp_{sample_id}",
                 )
-                .add_args(fastp_args)
+                .add_args(*fastp_args)
                 .add_inputs(*fastp_inputs)
                 .add_outputs(
                     fastp_html, stage_out=True, register_replica=False
@@ -396,16 +394,16 @@ class RnaseqWorkflow:
             all_bai_files.append(bai_file)
             all_count_files.append(counts_file)
 
-            bwa_args = (
-                f"--read1 {trimmed1.lfn} "
-                f"--output-bam {bam_file.lfn} "
-                f"--output-bai {bai_file.lfn} "
-                f"--output-counts {counts_file.lfn} "
-                f"--threads {TOOL_CONFIGS['bwa_align']['cores']}"
-            )
+            bwa_args = [
+                "--read1", trimmed1.lfn,
+                "--output-bam", bam_file.lfn,
+                "--output-bai", bai_file.lfn,
+                "--output-counts", counts_file.lfn,
+                "--threads", str(TOOL_CONFIGS['bwa_align']['cores']),
+            ]
             bwa_inputs = [trimmed1] + bwa_idx_files
             if is_paired:
-                bwa_args += f" --read2 {trimmed2.lfn}"
+                bwa_args += ["--read2", trimmed2.lfn]
                 bwa_inputs.append(trimmed2)
 
             bwa_job = (
@@ -414,7 +412,7 @@ class RnaseqWorkflow:
                     _id=f"bwa_{sample_id}",
                     node_label=f"bwa_{sample_id}",
                 )
-                .add_args(bwa_args)
+                .add_args(*bwa_args)
                 .add_inputs(*bwa_inputs)
                 .add_outputs(
                     bam_file, stage_out=True, register_replica=False
@@ -438,9 +436,9 @@ class RnaseqWorkflow:
                     node_label=f"bw_{sample_id}",
                 )
                 .add_args(
-                    f"--input-bam {bam_file.lfn} "
-                    f"--output {bw_file.lfn} "
-                    f"--threads {TOOL_CONFIGS['bam2bigwig']['cores']}"
+                    "--input-bam", bam_file.lfn,
+                    "--output", bw_file.lfn,
+                    "--threads", str(TOOL_CONFIGS['bam2bigwig']['cores']),
                 )
                 .add_inputs(bam_file, bai_file)
                 .add_outputs(
@@ -463,12 +461,8 @@ class RnaseqWorkflow:
         )
 
         # Build --bam and --bai args for symlinking in wrapper
-        bam_args = " ".join(
-            [f"--bam {f.lfn}" for f in all_bam_files]
-        )
-        bai_args = " ".join(
-            [f"--bai {f.lfn}" for f in all_bai_files]
-        )
+        bam_args = [tok for f in all_bam_files for tok in ("--bam", f.lfn)]
+        bai_args = [tok for f in all_bai_files for tok in ("--bai", f.lfn)]
 
         count_reads_job = (
             Job(
@@ -477,10 +471,10 @@ class RnaseqWorkflow:
                 node_label="count_reads",
             )
             .add_args(
-                f"--metadata sample_metadata.tsv "
-                f"--gff {ref_ann_file.lfn} "
-                f"--threads {TOOL_CONFIGS['count_reads']['cores']} "
-                + bam_args + " " + bai_args
+                "--metadata", "sample_metadata.tsv",
+                "--gff", ref_ann_file.lfn,
+                "--threads", str(TOOL_CONFIGS['count_reads']['cores']),
+                *bam_args, *bai_args,
             )
             .add_inputs(
                 metadata_file,
@@ -510,7 +504,7 @@ class RnaseqWorkflow:
                 _id="tmm_normalise",
                 node_label="tmm_normalise",
             )
-            .add_args("--log-transform TRUE")
+            .add_args("--log-transform", "TRUE")
             .add_inputs(gene_counts_out, ref_gene_df_out, tmm_normalise_r)
             .add_outputs(
                 cpm_counts_out, rpkm_counts_out,
@@ -554,8 +548,8 @@ class RnaseqWorkflow:
             diffexpr_job = (
                 Job("diffexpr", _id="diffexpr", node_label="diffexpr")
                 .add_args(
-                    f"--p-threshold {self.args.p_thresh} "
-                    f"--l2fc-threshold {self.args.l2fc_thresh}"
+                    "--p-threshold", str(self.args.p_thresh),
+                    "--l2fc-threshold", str(self.args.l2fc_thresh),
                 )
                 .add_inputs(
                     gene_counts_out,
