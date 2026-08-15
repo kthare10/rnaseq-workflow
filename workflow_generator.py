@@ -358,10 +358,10 @@ class RnaseqWorkflow:
             fastp_inputs = [read1_file]
 
             if is_paired:
-                fastp_args += (
-                    f" --read2 {read2_file.lfn} "
-                    f"--out2 {trimmed2.lfn}"
-                )
+                fastp_args += [
+                    "--read2", read2_file.lfn,
+                    "--out2", trimmed2.lfn,
+                ]
                 fastp_inputs.append(read2_file)
 
             fastp_job = (
