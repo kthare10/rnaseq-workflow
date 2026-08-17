@@ -44,18 +44,54 @@ The following diagram shows the workflow DAG:
 
 - [Pegasus WMS](https://pegasus.isi.edu/) >= 5.0
 - [HTCondor](https://htcondor.org/) (for distributed execution)
-- Docker or Singularity (for containerized execution)
+- Apptainer (on the submit host to build, and on the worker nodes to run)
 
 ## Container
 
 Build the container with all required tools:
 
 ```bash
-docker build -t username/rnaseq-workflow:latest -f Dockerfile .
-docker push username/rnaseq-workflow:latest
+apptainer build Apptainer/RNASeq_Container.sif Apptainer/RNASeq_Container.def
+
+# Verify
+apptainer exec Apptainer/RNASeq_Container.sif which bwa samtools fastp Rscript
 ```
 
-Update the container image in `workflow_generator.py` (`create_transformation_catalog`).
+No registry push — Pegasus stages the `.sif` like any other input file, and
+`workflow_generator.py` looks for `Apptainer/RNASeq_Container.sif` by default
+(override with `--container-sif`).
+
+Apptainer cannot build on macOS, and a `.sif` is single-architecture — build on a
+Linux host matching your worker nodes. Note that the single micromamba solve
+pulling the whole R/Bioconductor stack is slow and unreliable under qemu
+emulation, so build natively. See [`APPTAINER.md`](APPTAINER.md). The
+legacy `Dockerfile` is kept as a fallback.
+
+<details>
+<summary>Optional: publish the image to ghcr.io</summary>
+
+Useful for sharing one build across a team or citing an immutable artifact. Needs a
+GitHub token with `write:packages`.
+
+```bash
+echo "$GHCR_TOKEN" | apptainer registry login --username <github-user> \
+    --password-stdin oras://ghcr.io
+
+TAG=$(git rev-parse --short HEAD)
+apptainer push Apptainer/RNASeq_Container.sif \
+    oras://ghcr.io/kthare10/rnaseq-workflow:$TAG
+
+# On the submit host, pull back to the path the generator expects
+apptainer pull Apptainer/RNASeq_Container.sif \
+    oras://ghcr.io/kthare10/rnaseq-workflow:$TAG
+```
+
+Do **not** put the `oras://` URL in the transformation catalog — Pegasus supports
+`docker://`, `shub://`, `library://`, `shifter://` and `file://`, not `oras://`.
+Treat ghcr.io as a distribution channel and keep staging the local `.sif`. Details in
+[`APPTAINER.md`](APPTAINER.md).
+
+</details>
 
 ## Usage
 
@@ -167,7 +203,9 @@ rnaseq-workflow/
 │   ├── TMM_normalise_counts.R     # R script: edgeR TMM normalization
 │   ├── pca.R                      # R script: PCA analysis
 │   └── diffexpr.R                 # R script: DESeq2 + volcano plots
-├── Dockerfile                     # Container with all tools
+├── Apptainer/
+│   └── RNASeq_Container.def       # Container definition with all tools
+├── Dockerfile                     # Legacy Dockerfile, kept as a fallback
 └── README.md
 ```
 
@@ -179,7 +217,7 @@ rnaseq-workflow/
 | `tuple val(meta), path(reads)` | Per-sample `Job` with explicit file inputs |
 | Channel `.collect()` → fan-in | Multiple `File` objects as job inputs |
 | `params.cont_tabl` conditional | `--contrast-table` CLI arg, conditional DAG |
-| `conda "bioconda::fastp"` | Single `Dockerfile` with all tools |
+| `conda "bioconda::fastp"` | Single Apptainer definition with all tools |
 | `label 'process_high'` | `.add_pegasus_profile(memory="46 GB", cores=8)` |
 | `publishDir` | `stage_out=True` on output files |
 | Channel operations | Python loops in `create_workflow()` |
