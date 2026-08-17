@@ -51,11 +51,21 @@ The following diagram shows the workflow DAG:
 Build the container with all required tools:
 
 ```bash
-docker build -t username/rnaseq-workflow:latest -f Dockerfile .
-docker push username/rnaseq-workflow:latest
+apptainer build Apptainer/RNASeq_Container.sif Apptainer/RNASeq_Container.def
+
+# Verify
+apptainer exec Apptainer/RNASeq_Container.sif which bwa samtools fastp Rscript
 ```
 
-Update the container image in `workflow_generator.py` (`create_transformation_catalog`).
+No registry push — Pegasus stages the `.sif` like any other input file, and
+`workflow_generator.py` looks for `Apptainer/RNASeq_Container.sif` by default
+(override with `--container-sif`).
+
+Apptainer cannot build on macOS, and a `.sif` is single-architecture — build on a
+Linux host matching your worker nodes. Note that the single micromamba solve
+pulling the whole R/Bioconductor stack is slow and unreliable under qemu
+emulation, so build natively. See `../APPTAINER.md`. The legacy `Dockerfile` is
+kept as a fallback.
 
 ## Usage
 

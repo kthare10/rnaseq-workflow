@@ -1,0 +1,64 @@
+# RNA-seq workflow container.
+#
+# Carries all bioinformatics tools from both conda environments of the original
+# Nextflow pipeline (align_map.yml + r_env.yml): BWA, samtools, deeptools, fastp,
+# plus the R/Bioconductor differential-expression stack.
+#
+# Converted from Dockerfile. `Bootstrap: docker` pulls and converts the OCI base
+# image directly, so no Docker installation is needed to build the .sif.
+#
+# Build (on an x86_64 Linux host — see README):
+#   apptainer build Apptainer/RNASeq_Container.sif Apptainer/RNASeq_Container.def
+
+Bootstrap: docker
+From: mambaorg/micromamba:1.5-jammy
+
+%post
+    # %post always runs as root during the build, so no USER switching is
+    # needed (unlike the Dockerfile mambaorg pattern with USER root).
+
+    # curl + wget are mandatory: PegasusLite downloads its worker package
+    # inside the container before the job script ever runs.
+    apt-get update && apt-get install -y --no-install-recommends \
+        curl wget ca-certificates
+    rm -rf /var/lib/apt/lists/*
+
+    # Install all tools in one solver pass so the R and Python stacks resolve
+    # against a single consistent set of versions.
+    micromamba install -y -n base -c conda-forge -c bioconda \
+        python=3.9 \
+        bioconda::bwa=0.7.17 \
+        bioconda::samtools=1.15 \
+        bioconda::deeptools=3.5.3 \
+        bioconda::fastp=0.23.4 \
+        conda-forge::r-base=4.1 \
+        conda-forge::r-optparse \
+        conda-forge::r-ape \
+        conda-forge::r-stringr \
+        conda-forge::r-ggplot2 \
+        conda-forge::r-scales \
+        conda-forge::r-rcolorbrewer \
+        conda-forge::r-reshape2 \
+        conda-forge::r-tibble \
+        conda-forge::r-rsqlite \
+        conda-forge::r-plyr \
+        bioconda::bioconductor-rsubread=2.8.1 \
+        bioconda::bioconductor-edger \
+        bioconda::bioconductor-deseq2 \
+        bioconda::bioconductor-enhancedvolcano \
+        bioconda::r-ggbiplot
+    micromamba clean --all --yes
+
+%environment
+    # Ensure the micromamba bin is at the front of the PATH
+    export PATH="/opt/conda/bin:$PATH"
+    # Set Python to not buffer output (important for Pegasus log capture)
+    export PYTHONUNBUFFERED=1
+
+%runscript
+    # Run inside the activated micromamba 'base' environment
+    exec micromamba run -n base "$@"
+
+%labels
+    maintainer Komal Thareja <kthare10@renci.org>
+    description RNA-seq workflow - BWA/samtools alignment and R/Bioconductor DE analysis
