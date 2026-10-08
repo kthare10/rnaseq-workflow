@@ -127,6 +127,32 @@ pegasus-plan --submit -s condorpool -o local workflow.yml
 pegasus-status <run-directory>
 ```
 
+### Sites
+
+The workflow names no scheduler: each job states cores, memory and a
+wall-clock runtime, and `custom_sites.py` writes `sites.yml` for the site.
+With no options the generator adds an HTCondor pool named `condorpool` (or
+plans on `compute` when `~/.pegasusrc` names a hosted site catalog). For a
+Slurm cluster:
+
+```bash
+./workflow_generator.py --sample-file samples.tsv --ref-genome ref.fasta \
+    --ref-ann ref.gff -e compute --site-style slurm --queue cpu --project my_lab
+pegasus-plan --submit -s compute -o local workflow.yml
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-e`, `--execution-site` | `condorpool` (`compute` with a hosted catalog) | Site to plan against |
+| `--site-style` | `auto` | `auto`: keep an existing `sites.yml` entry or hosted catalog, else add an HTCondor site; `condor`/`slurm`: (re)write the site; `none`: leave `sites.yml` alone |
+| `--queue`, `--project` | — | Batch partition and allocation account (Slurm) |
+| `--site-scratch` | `./work` | Slurm shared scratch visible to workers and the submit host |
+| `--site-profile`, `--tag-profile` | — | Extra profiles on the site or on tagged jobs; repeatable |
+| `--shared-filesystem` | `auto` | Read inputs directly from the submit host (on for Slurm, off for HTCondor) |
+| `--sites-yml` | `sites.yml` | Local site catalog |
+
+`custom_sites.py` also runs standalone (`./custom_sites.py --help`).
+
 ## Input Files
 
 ### Sample file (`--sample-file`)
@@ -190,6 +216,7 @@ KO	WT
 ```
 rnaseq-workflow/
 ├── workflow_generator.py          # Generates Pegasus catalogs + DAG
+├── custom_sites.py                # Writes sites.yml (HTCondor or Slurm)
 ├── bin/
 │   ├── fastp.py                   # Wrapper: QC and trimming
 │   ├── bwa_index.py               # Wrapper: BWA index construction
@@ -218,7 +245,7 @@ rnaseq-workflow/
 | Channel `.collect()` → fan-in | Multiple `File` objects as job inputs |
 | `params.cont_tabl` conditional | `--contrast-table` CLI arg, conditional DAG |
 | `conda "bioconda::fastp"` | Single Apptainer definition with all tools |
-| `label 'process_high'` | `.add_pegasus_profile(memory="46 GB", cores=8)` |
+| `label 'process_high'` | `.add_pegasus_profile(memory="14 GB", cores=8, runtime=...)` (memory scaled from 46 GB to fit a 16 GB node) |
 | `publishDir` | `stage_out=True` on output files |
 | Channel operations | Python loops in `create_workflow()` |
 | `infer_dependencies=True` | Pegasus builds DAG from shared `File` objects |
