@@ -75,9 +75,12 @@ apptainer build Apptainer/Earthquake_Container.sif Apptainer/Earthquake_Containe
 apptainer exec Apptainer/Earthquake_Container.sif python -c "import pandas, sklearn; print('ok')"
 apptainer exec Apptainer/Earthquake_Container.sif which curl wget   # PegasusLite needs both
 
-# 4. Generate and submit — the generator finds the .sif by default
-./workflow_generator.py --regions california --start-date 2024-01-01 -o workflow.yml
-pegasus-plan --submit -s condorpool -o local workflow.yml
+# 4. Generate, then plan and submit — the generator finds the .sif by default
+#    and prints the pegasus-plan command (it never submits by itself).
+#    -e condorpool: a plain HTCondor pool with no site catalog; with a hosted
+#    catalog use -s <catalog>.yml and plan with -s compute.
+./workflow_generator.py --regions california --start-date 2024-01-01 -o workflow.yml -e condorpool
+pegasus-plan --dir submit -s condorpool -o local --submit workflow.yml
 ```
 
 If the `.sif` lives somewhere other than `<workflow>/Apptainer/`, every generator
