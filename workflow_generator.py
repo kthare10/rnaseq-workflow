@@ -810,9 +810,12 @@ def main():
         workflow.write()
 
         logger.info(f"\nWorkflow written to {args.output}")
+        # --output-dir: no site catalog defines "local", so Pegasus's built-in local
+        # site would otherwise stage outputs to ./wf-output.
         logger.info(
             f"Plan and submit: pegasus-plan --dir submit "
-            f"-s {args.execution_site_name} -o local --submit {args.output}"
+            f"-s {args.execution_site_name} -o local "
+            f"--output-dir {workflow.local_storage_dir} --submit {args.output}"
         )
 
     except Exception as e:

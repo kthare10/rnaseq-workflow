@@ -131,7 +131,7 @@ on `compute`; on a plain HTCondor pool with no site catalog, generate with
 ./workflow_generator.py --sample-file samples.tsv --data-dir fastq/ \
     --ref-genome references/NC_011916.fasta --ref-ann references/ccna.gff \
     --contrast-table contrasts.tsv -e condorpool
-pegasus-plan --dir submit -s condorpool -o local --submit workflow.yml
+pegasus-plan --dir submit -s condorpool -o local --output-dir "$PWD/output" --submit workflow.yml
 pegasus-status <run-directory>
 ```
 
@@ -164,10 +164,10 @@ command; it does not submit. The notebook `RNASeq-Workflow.ipynb` runs the same 
 class interactively — including a local HTCondor site catalog — and submits
 from an explicit cell.
 
-Where outputs land: the notebook's local site catalog stages them to
-`output/`. With `-e condorpool` or a hosted catalog, which define no `local`
-site, Pegasus uses its default local storage, `wf-output/` in the directory
-you plan from.
+Where outputs land: `output/`. The notebook's local site catalog stages them
+there, and the printed plan command passes `--output-dir "$PWD/output"`
+(without it, `-e condorpool` or a hosted catalog, which define no `local`
+site, would leave them in Pegasus's default `wf-output/`).
 
 ## Input Files
 
