@@ -16,11 +16,17 @@ Precedence, most specific first:
 
   1. A sites.yml entry for the site that someone wrote (by hand or with this
      script) — kept as-is.
-  2. A hosted catalog named in ~/.pegasusrc (pegasus.catalog.site.repo.file,
-     from github.com/pegasushub/pegasus-site-catalogs), which Pegasus merges a
-     local sites.yml over, key by key.
+  2. A hosted catalog (from github.com/pegasushub/pegasus-site-catalogs),
+     which Pegasus merges a local sites.yml over, key by key. The generator
+     names it with -s/--hosted-site-catalog FILE, which it writes into the
+     workflow's pegasus.properties (pegasus.catalog.site.repo.file); without
+     -s, one set in ~/.pegasusrc is used.
   3. A default written here: an HTCondor site, so the workflow plans with no
      setup at all (Pegasus Studio's default).
+
+The execution site is called "compute" in every case — the hosted catalogs'
+name for their one site — so "pegasus-plan -s compute" works whether the site
+comes from a hosted catalog or is generated here.
 
 Only the requested site's entry is ever written; other sites in sites.yml are
 left alone. A "local" site (submit-host scratch and output storage under the
@@ -33,7 +39,7 @@ Standalone use:
     ./custom_sites.py --style slurm --site compute --project my_lab
 
     # A local HTCondor pool with no hosted catalog:
-    ./custom_sites.py --style condor --site condorpool
+    ./custom_sites.py --style condor
 
     # A Slurm cluster with no hosted catalog, GPU jobs on their own partition:
     ./custom_sites.py --style slurm --site compute --queue cpu --project my_lab \\
@@ -56,7 +62,8 @@ from Pegasus.api import (
 
 STYLES = ("condor", "slurm")
 
-# The one site hosted catalogs (pegasushub/pegasus-site-catalogs) define.
+# The one site hosted catalogs (pegasushub/pegasus-site-catalogs) define, and
+# the name workflows plan against by default, hosted catalog or not.
 HOSTED_SITE = "compute"
 
 NAMESPACES = {ns.value: ns for ns in Namespace}
@@ -93,8 +100,14 @@ def parse_tag_profile(text):
 # ----------------------------------------------------------------------
 # Reading what already exists
 # ----------------------------------------------------------------------
-def hosted_catalog(pegasusrc=None):
-    """The hosted catalog named in ~/.pegasusrc, or None."""
+def hosted_catalog(name=None, pegasusrc=None):
+    """The hosted catalog in use, or None.
+
+    `name` is the one the workflow names itself (the generator's
+    -s/--hosted-site-catalog) and wins; otherwise the one in ~/.pegasusrc.
+    """
+    if name:
+        return name
     rc = Path(pegasusrc) if pegasusrc else Path.home() / ".pegasusrc"
     name = None
     try:
@@ -154,15 +167,16 @@ def _hosted_defines(path, hosted, site_name):
     return site_name == HOSTED_SITE
 
 
-def is_batch_site(style):
+def is_batch_site(style, hosted=None):
     """True if jobs stage through the site's own filesystem (not condorio).
 
     An unknown style over a hosted catalog counts: hosted catalogs describe
     batch clusters. On such a site pegasus.transfer.links stages inputs as
     symlinks into the workflow directory, so containers must bind it.
+    `hosted` is the catalog the workflow names, as for hosted_catalog().
     """
     if style is None:
-        return hosted_catalog() is not None
+        return hosted_catalog(hosted) is not None
     return style != "condor"
 
 
@@ -296,16 +310,19 @@ def write_sites(path, sites, base_doc=None):
         yaml.safe_dump(doc, fh, sort_keys=False)
 
 
-def ensure_sites_yml(path, site_name, wf_dir, style="auto", **site_opts):
+def ensure_sites_yml(path, site_name, wf_dir, style="auto", hosted=None,
+                     **site_opts):
     """Make sure planning against `site_name` works; return (action, style).
 
     style "auto" keeps anything already provided and only fills gaps;
     "condor"/"slurm" (re)write the site_name entry; "none" writes nothing.
+    `hosted` is the hosted catalog the workflow names (-s), if any; without
+    it, one in ~/.pegasusrc counts.
     `action` says what happened, for the caller to report; the returned style
     is the site's effective one ("condor", "slurm", ... or None if unknown).
     """
     doc, entries = load_sites_yml(path)
-    hosted = hosted_catalog()
+    hosted = hosted_catalog(hosted)
     if style == "none":
         return "untouched (--site-style none)", (
             site_style(entries.get(site_name))
@@ -321,9 +338,10 @@ def ensure_sites_yml(path, site_name, wf_dir, style="auto", **site_opts):
                              "cannot be applied to 'local'")
         # Over a hosted catalog the hosted entry already carries the
         # scheduler settings, so write only the overrides — but only for a
-        # site the hosted catalog defines. Any other site (e.g. condorpool
-        # next to a hosted "compute") has nothing to overlay and needs a
-        # complete entry, or the planner gets a site with no submit setup.
+        # site the hosted catalog defines. Any other site (e.g. a site named
+        # "condorpool" next to a hosted "compute") has nothing to overlay and
+        # needs a complete entry, or the planner gets a site with no submit
+        # setup.
         full = site_opts.pop("full", None)
         if full is None:
             full = not (hosted and _hosted_defines(path, hosted, site_name))
@@ -370,8 +388,12 @@ def main():
                              "hosted catalogs' convention)")
     parser.add_argument("--full", action="store_true", default=None,
                         help="write a complete site rather than an overlay "
-                             "(default: complete unless a hosted catalog "
-                             "named in ~/.pegasusrc defines the site)")
+                             "(default: complete unless the hosted catalog "
+                             "defines the site)")
+    parser.add_argument("--hosted-site-catalog", metavar="FILE",
+                        help="hosted catalog the site is overlaid on, e.g. "
+                             "unity.yml (default: the one named in "
+                             "~/.pegasusrc, if any)")
     parser.add_argument("--scratch", metavar="DIR",
                         help="full slurm site: shared scratch the workers and "
                              "submit host both see (default: $PWD/work)")
@@ -401,7 +423,8 @@ def main():
         action, _ = ensure_sites_yml(
             args.output, args.site,
             wf_dir=os.path.dirname(os.path.abspath(__file__)),
-            style=args.style, full=args.full, queue=args.queue,
+            style=args.style, hosted=args.hosted_site_catalog,
+            full=args.full, queue=args.queue,
             project=args.project, scratch=args.scratch, storage=args.storage,
             profiles=args.profile, tag_profiles=args.tag_profile)
     except ValueError as exc:
