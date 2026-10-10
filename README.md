@@ -122,10 +122,52 @@ Treat ghcr.io as a distribution channel and keep staging the local `.sif`. Detai
 
 ### Submit to Pegasus
 
+The generator writes the workflow and catalogs and prints the plan command; it
+never submits. With a hosted site catalog (`-s access-pegasus.yml`, ...) plan
+on `compute`; on a plain HTCondor pool with no site catalog, generate with
+`-e condorpool` and plan on `condorpool`:
+
 ```bash
-pegasus-plan --submit -s condorpool -o local workflow.yml
+./workflow_generator.py --sample-file samples.tsv --data-dir fastq/ \
+    --ref-genome references/NC_011916.fasta --ref-ann references/ccna.gff \
+    --contrast-table contrasts.tsv -e condorpool
+pegasus-plan --dir submit -s condorpool -o local --output-dir "$PWD/output" --submit workflow.yml
 pegasus-status <run-directory>
 ```
+
+Or run every step, including submit and monitoring, from the notebook
+`RNASeq-Workflow.ipynb` (`jupyter lab RNASeq-Workflow.ipynb`).
+
+### Sites
+
+Jobs run on a site named `compute`, which a site catalog you choose defines —
+the [pegasus-gromacs](https://github.com/pegasus-isi/pegasus-gromacs) pattern.
+The generator writes no site catalog, because where jobs run depends on your
+resource provider and allocation, not on the workflow:
+
+- **A hosted site catalog** from
+  [pegasus-site-catalogs](https://github.com/pegasushub/pegasus-site-catalogs/tree/main/conf)
+  (`access-pegasus.yml`, `unity.yml`, `nersc-perlmutter.yml`, ...): pass
+  `-s <catalog>.yml`, or set it once for all workflows in `~/.pegasusrc`
+  together with your allocation (`env.RESOURCE_USERNAME`,
+  `env.RESOURCE_PROJECT`). Partitions and accounts come from the catalog.
+- **A plain HTCondor pool with no site catalog** (a FABRIC slice, a laptop):
+  generate with `-e condorpool`; Pegasus defines that site itself.
+
+```bash
+./workflow_generator.py --sample-file samples.tsv --ref-genome ref.fasta --ref-ann ref.gff -s access-pegasus.yml
+./workflow_generator.py --sample-file samples.tsv --ref-genome ref.fasta --ref-ann ref.gff -e condorpool
+```
+
+The generator writes the workflow and catalogs and prints the `pegasus-plan`
+command; it does not submit. The notebook `RNASeq-Workflow.ipynb` runs the same generator
+class interactively — including a local HTCondor site catalog — and submits
+from an explicit cell.
+
+Where outputs land: `output/`. The notebook's local site catalog stages them
+there, and the printed plan command passes `--output-dir "$PWD/output"`
+(without it, `-e condorpool` or a hosted catalog, which define no `local`
+site, would leave them in Pegasus's default `wf-output/`).
 
 ## Input Files
 
@@ -190,6 +232,7 @@ KO	WT
 ```
 rnaseq-workflow/
 ├── workflow_generator.py          # Generates Pegasus catalogs + DAG
+├── RNASeq-Workflow.ipynb          # Notebook: generate, plan, submit, monitor (imports the generator)
 ├── bin/
 │   ├── fastp.py                   # Wrapper: QC and trimming
 │   ├── bwa_index.py               # Wrapper: BWA index construction
@@ -218,7 +261,7 @@ rnaseq-workflow/
 | Channel `.collect()` → fan-in | Multiple `File` objects as job inputs |
 | `params.cont_tabl` conditional | `--contrast-table` CLI arg, conditional DAG |
 | `conda "bioconda::fastp"` | Single Apptainer definition with all tools |
-| `label 'process_high'` | `.add_pegasus_profile(memory="46 GB", cores=8)` |
+| `label 'process_high'` | `.add_pegasus_profile(memory="14 GB", cores=8)` (memory scaled from 46 GB to fit a 16 GB node) |
 | `publishDir` | `stage_out=True` on output files |
 | Channel operations | Python loops in `create_workflow()` |
 | `infer_dependencies=True` | Pegasus builds DAG from shared `File` objects |
